@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmusuBI × Discord サービス連携ポータル</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍙</text></svg>">
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🍙</span>
+        <div class="logo-text">
+          <h1>OmusuBI</h1>
+          <p>Boundless Identity Orchestration</p>
+        </div>
+      </div>
+      
+      <div class="header-user-bar">
+        <div class="user-pill omusubi-user-pill">
+          <span class="pill-icon">👤</span>
+          <span class="pill-username">{{ username }}</span>
+          {% if is_admin %}
+          <span class="admin-badge">🛡️ 管理者</span>
+          {% endif %}
+        </div>
+        <button class="btn btn-logout" id="btn-logout" title="ログアウト">ログアウト</button>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- HERO -->
+      <section class="hero-card">
+        <h2>開発者アクセス & Discord 権限自動連携</h2>
+        <p class="subtitle">
+          Discord サーバー内の特定チャンネル閲覧権限を検証し、OmusuBI SSO の <strong>Developer</strong> ロールを自動付与・同期します。
+        </p>
+      </section>
+
+      <div id="alert-box" class="alert" style="display: none;"></div>
+
+      <!-- CARDS GRID -->
+      <div class="cards-grid">
+        <!-- STEP 1: LINKING CARD -->
+        <div class="card" id="link-card">
+          <div class="card-header">
+            <span class="step-num">1</span>
+            <h3>Discord 連携設定</h3>
+          </div>
+
+          {% if is_linked %}
+          <!-- ALREADY LINKED STATE -->
+          <div class="linked-info-box">
+            <div class="discord-user-card">
+              <span class="discord-icon-large">🎮</span>
+              <div class="discord-user-details">
+                <span class="discord-tag">@{{ discord_username or '連携済み' }}</span>
+                <span class="discord-id">ID: <code>{{ discord_user_id }}</code></span>
+              </div>
+              <span class="badge-status-linked">連携中</span>
+            </div>
+
+            <div class="action-buttons-inline">
+              <button class="btn btn-secondary" id="btn-resync">🔄 権限を再同期</button>
+              <button class="btn btn-danger-outline" id="btn-unlink">連携を解除</button>
+            </div>
+          </div>
+          {% else %}
+          <!-- NOT YET LINKED STATE -->
+          <div class="sso-link-promo" style="background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.25); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; text-align: center;">
+            <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">🍙 ⇄ 🎮</div>
+            <h4 style="margin: 0 0 0.5rem; color: var(--home-text-main, #1e293b);">OmusuBI SSO でワンクリック連携</h4>
+            <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 1rem; line-height: 1.5;">
+              Google連携やMicrosoft連携と同様に、OmusuBIアカウント設定画面からワンクリックでDiscordを紐付けることができます。
+            </p>
+            <a href="https://sso.nigiri-rice.com/realms/master/account/#/security/linked-accounts" target="_blank" rel="noopener" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5865F2; border-color: #5865F2; padding: 0.6rem 1.2rem; text-decoration: none; border-radius: 8px; font-weight: 600; color: #fff;">
+              <span>🔗 OmusuBI アカウント設定で Discord を連携</span>
+            </a>
+            <div style="margin-top: 0.75rem;">
+              <small style="color: #94a3b8;">※ 連携完了後、本ページで「🔄 権限を再同期」を押してください</small>
+            </div>
+          </div>
+
+          <div style="text-align: center; margin: 1rem 0; color: #94a3b8; font-size: 0.85rem; font-weight: bold; position: relative;">
+            <span style="background: #fff; padding: 0 0.75rem; position: relative; z-index: 1;">または認証コードで連携</span>
+            <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #e2e8f0; z-index: 0;"></div>
+          </div>
+
+          <p class="card-desc">
+            Discord サーバーで <code>/link</code> を実行して発行された <strong>認証コード</strong> を入力してください。
+          </p>
+
+          <form id="link-form" class="form">
+            <div class="form-group">
+              <label for="code">Discord 認証コード</label>
+              <div class="code-input-wrapper">
+                <input type="text" id="code" name="code" placeholder="例: OMUSU-1234" required autofocus>
+              </div>
+              <small class="help-text">Discord の対象サーバーで <code>/link</code> と入力すると認証コードが発行されます。</small>
+            </div>
+
+            <button type="submit" class="btn btn-secondary" id="btn-submit">
+              <span class="btn-text">コードを入力して連携</span>
+            </button>
+          </form>
+          {% endif %}
+        </div>
+
+        <!-- STEP 2: STATUS CARD -->
+        <div class="card" id="status-card">
+          <div class="card-header">
+            <span class="step-num">2</span>
+            <h3>連携ステータス & 権限検証</h3>
+          </div>
+
+          {% if not is_linked %}
+          <div id="status-empty" class="status-placeholder">
+            <div class="placeholder-icon">🔒</div>
+            <p>Discord アカウントを連携すると、ここにリアルタイムの権限検証ステータスが表示されます。</p>
+          </div>
+          {% endif %}
+
+          <div id="status-details" style="{% if not is_linked %}display: none;{% endif %}">
+            <div class="user-badge-row">
+              <div class="user-pill omusubi-pill">
+                <span class="pill-label">OmusuBI</span>
+                <span class="pill-value" id="res-username">{{ username }}</span>
+              </div>
+              <div class="user-pill discord-pill">
+                <span class="pill-label">Discord</span>
+                <span class="pill-value" id="res-discord">@{{ discord_username or '-' }}</span>
+              </div>
+            </div>
+
+            <div class="status-section">
+              <h4>SSO Developer ロール状態</h4>
+              {% if is_linked and eval_res and eval_res.eligible_for_developer_role and has_developer_role %}
+              <div class="role-result-banner active" id="role-banner">
+                <span class="banner-icon" id="role-banner-icon">🟢</span>
+                <div class="banner-text">
+                  <strong id="role-banner-title">Developer ロール有効</strong>
+                  <p id="role-banner-desc">対象チャンネルの閲覧権限またはロールが確認されたため、管理者・開発者権限が付与されています。</p>
+                </div>
+              </div>
+              {% elif is_linked and eval_res and eval_res.in_guild %}
+              <div class="role-result-banner inactive" id="role-banner">
+                <span class="banner-icon" id="role-banner-icon">🟡</span>
+                <div class="banner-text">
+                  <strong id="role-banner-title">閲覧権限不足 (未付与)</strong>
+                  <p id="role-banner-desc">サーバーに参加していますが、対象チャンネルの閲覧権限がありません。</p>
+                </div>
+              </div>
+              {% elif is_linked %}
+              <div class="role-result-banner inactive" id="role-banner">
+                <span class="banner-icon" id="role-banner-icon">⚪</span>
+                <div class="banner-text">
+                  <strong id="role-banner-title">サーバー未参加</strong>
+                  <p id="role-banner-desc">アカウントは紐付きましたが、まだ対象 Discord サーバーに参加していません。</p>
+                </div>
+              </div>
+              {% else %}
+              <div class="role-result-banner" id="role-banner">
+                <span class="banner-icon" id="role-banner-icon">⚪</span>
+                <div class="banner-text">
+                  <strong id="role-banner-title">未連携</strong>
+                  <p id="role-banner-desc">Discord アカウントを連携してください。</p>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="status-section">
+              <h4>対象チャンネル閲覧権限チェック</h4>
+              <ul class="channel-list" id="channel-list">
+                {% if eval_res and eval_res.channel_permissions %}
+                  {% for cid, ok in eval_res.channel_permissions.items() %}
+                  <li class="channel-item">
+                    <span>チャンネル <code>{{ cid }}</code></span>
+                    <span class="{{ 'badge-ok' if ok else 'badge-no' }}">{{ '✅ 閲覧可能' if ok else '❌ 閲覧不可' }}</span>
+                  </li>
+                  {% endfor %}
+                {% else %}
+                  <li class="channel-item-placeholder">連携後にチャンネル権限が検証されます</li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN ONLY SECTION: RENDERED ONLY FOR ADMIN USERS -->
+      {% if is_admin %}
+      <section class="card admin-card" id="admin-section">
+        <div class="card-header">
+          <span class="step-num">⚙️</span>
+          <h3>管理者機能: 自動オンボーディング・未参加者一括招待</h3>
+        </div>
+        <p class="card-desc">
+          OmusuBI で <strong>Developer</strong> 等のロールを保持しているが、まだ Discord サーバーに参加していないユーザーを抽出し、Discord DM と 招待メール を一括自動送信します。
+        </p>
+
+        <div class="admin-actions">
+          <button class="btn btn-accent" id="btn-send-invites">
+            ✉️ 未参加者へ招待を一斉送信 (DM + メール)
+          </button>
+          <span id="invite-spinner" class="spinner" style="display: none;"></span>
+        </div>
+
+        <div id="invite-result-box" class="admin-result" style="display: none;">
+          <!-- Results rendered here -->
+        </div>
+      </section>
+      {% endif %}
+    </main>
+
+    <footer class="footer">
+      <p>© nigiri-rice.com • OmusuBI Boundless Identity Orchestration System</p>
+      <div class="footer-links">
+        <a href="https://www.nigiri-rice.com/terms-of-service/" target="_blank" rel="noopener">利用規約</a>
+        <span>•</span>
+        <a href="https://www.nigiri-rice.com/privacy-policy/" target="_blank" rel="noopener">プライバシーポリシー</a>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

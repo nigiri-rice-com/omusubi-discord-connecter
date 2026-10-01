@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omusubi-discord-connecter
+  namespace: omusubi
+  labels:
+    app.kubernetes.io/name: omusubi-discord-connecter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omusubi-discord-connecter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omusubi-discord-connecter
+    spec:
+      containers:
+        - name: connecter
+          image: python:3.11-slim
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              pip install --no-cache-dir discord.py fastapi uvicorn httpx jinja2 pydantic pydantic-settings python-dotenv aiosmtplib &&
+              python main.py
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: omusubi-discord-secrets
+                  key: discord-bot-token
+            - name: DISCORD_SERVER_ID
+              value: "1159029710584561725"
+            - name: DISCORD_ROLE_ID
+              value: "1299275926202224661"
+            - name: KEYCLOAK_URL
+              value: "http://omusubi-core.omusubi.svc.cluster.local:8080"
+            - name: KEYCLOAK_REALM
+              value: "master"
+            - name: KEYCLOAK_ADMIN_USER
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: omusubi-discord-secrets
+                  key: keycloak-admin-password
+            - name: KEYCLOAK_TARGET_ROLE
+              value: "Developer"
+            - name: SMTP_HOST
+              value: "mailcowdockerized-postfix-mailcow-1"
+            - name: SMTP_PORT
+              value: "25"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: omusubi-discord-connecter
+  namespace: omusubi
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: omusubi-discord-connecter
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
