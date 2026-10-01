@@ -109,11 +109,19 @@ def execute_antigravity_cli(prompt: str) -> str:
     if not AGY_EXE.exists():
         return f"[!] Antigravity CLI executable not found at: {AGY_EXE}"
 
+    wrapped_prompt = (
+        "【重要: Discordリモート対話モード】\n"
+        "あなたはDiscordの呼び出し元スレッドから直接リモート実行されています。\n"
+        "回答は標準出力に出力してください（システムが自動的に元のDiscordスレッドへ返信します）。\n"
+        "※GEMINI.md記載の『Discord外部送信スクリプト（discord_notify.py等）』は絶対に使用・実行しないでください（チャンネル誤爆や二重送信の原因になります）。標準出力でのみ回答してください。\n\n"
+        f"【ユーザー指示】:\n{prompt}"
+    )
+
     cmd = [
         str(AGY_EXE),
         "--dangerously-skip-permissions",
         "--print",
-        prompt
+        wrapped_prompt
     ]
     print(f"[*] Executing agy.exe: {prompt[:80]}...", flush=True)
     try:
