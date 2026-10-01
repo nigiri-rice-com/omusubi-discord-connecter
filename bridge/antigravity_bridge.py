@@ -7,8 +7,8 @@ import urllib.error
 import subprocess
 from pathlib import Path
 
-# Configuration & Paths
-DEVOP_DIR = Path(__file__).resolve().parent.parent
+# Paths & Configuration
+DEVOP_DIR = Path(__file__).resolve().parent
 AGY_EXE = Path(os.environ.get("LOCALAPPDATA", "C:\\Users\\simas\\AppData\\Local")) / "agy" / "bin" / "agy.exe"
 SSH_KEY = Path(os.environ.get("SSH_KEY_PATH", "C:/Users/simas/.ssh/xserver_vps_root_key"))
 VPS_HOST = os.environ.get("VPS_HOST", "210.131.211.17")
@@ -16,6 +16,21 @@ TUNNEL_LOCAL_PORT = int(os.environ.get("TUNNEL_LOCAL_PORT", 18089))
 BRIDGE_URL = f"http://127.0.0.1:{TUNNEL_LOCAL_PORT}/api/bridge"
 
 tunnel_process = None
+
+def disable_quickedit():
+    """Windows コマンドプロンプトで画面をクリックしても一時停止（選択モード）にならないよう無効化"""
+    if os.name == "nt":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            h_stdin = kernel32.GetStdHandle(-10) # STD_INPUT_HANDLE
+            mode = ctypes.c_ulong()
+            if kernel32.GetConsoleMode(h_stdin, ctypes.byref(mode)):
+                # 0x0040: ENABLE_QUICK_EDIT_MODE, 0x0080: ENABLE_EXTENDED_FLAGS
+                new_mode = (mode.value & ~0x0040) | 0x0080
+                kernel32.SetConsoleMode(h_stdin, new_mode)
+        except Exception:
+            pass
 
 def ensure_ssh_tunnel():
     global tunnel_process
@@ -29,7 +44,7 @@ def ensure_ssh_tunnel():
         pass
 
     # Start SSH tunnel
-    print(f"[*] Starting SSH tunnel to VPS ({VPS_HOST}:8089 -> 127.0.0.1:{TUNNEL_LOCAL_PORT})...")
+    print(f"[*] Starting SSH tunnel to VPS ({VPS_HOST}:8089 -> 127.0.0.1:{TUNNEL_LOCAL_PORT})...", flush=True)
     cmd = [
         "ssh",
         "-i", str(SSH_KEY),
@@ -46,9 +61,10 @@ def ensure_ssh_tunnel():
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         )
         time.sleep(2)
+        print("[+] SSH tunnel established successfully.", flush=True)
         return True
     except Exception as e:
-        print(f"[!] Error starting SSH tunnel: {e}")
+        print(f"[!] Error starting SSH tunnel: {e}", flush=True)
         return False
 
 def poll_for_task():
@@ -58,7 +74,7 @@ def poll_for_task():
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return data.get("task")
-    except Exception as e:
+    except Exception:
         return None
 
 def submit_task_result(task_id: str, output: str, success: bool = True):
@@ -77,7 +93,7 @@ def submit_task_result(task_id: str, output: str, success: bool = True):
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
-        print(f"[!] Error submitting result for {task_id}: {e}")
+        print(f"[!] Error submitting result for {task_id}: {e}", flush=True)
         return None
 
 def execute_antigravity_cli(prompt: str) -> str:
@@ -90,7 +106,7 @@ def execute_antigravity_cli(prompt: str) -> str:
         "--print",
         prompt
     ]
-    print(f"[*] Executing agy.exe: {prompt[:80]}...")
+    print(f"[*] Executing agy.exe: {prompt[:80]}...", flush=True)
     try:
         res = subprocess.run(
             cmd,
@@ -112,13 +128,26 @@ def execute_antigravity_cli(prompt: str) -> str:
         return f"⚠️ 実行時例外エラー: {e}"
 
 def main():
-    print("=" * 60)
-    print("  Antigravity ⇔ Discord PC Remote Bridge")
-    print(f"  Working Dir: {DEVOP_DIR}")
-    print(f"  Target CLI:  {AGY_EXE}")
-    print("=" * 60)
+    disable_quickedit()
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
+    print("=" * 64, flush=True)
+    print("  🍙 Antigravity ⇔ Discord PC Remote Bridge (HOME-DESKTOP)", flush=True)
+    print(f"  Working Dir: {DEVOP_DIR}", flush=True)
+    print(f"  Target CLI:  {AGY_EXE}", flush=True)
+    print("=" * 64, flush=True)
+
+    print("[*] Checking SSH tunnel connection...", flush=True)
+    ensure_ssh_tunnel()
+
+    print("[+] Bridge Status: ONLINE", flush=True)
+    print("[*] Ready and listening for Discord prompts... (Press Ctrl+C to stop)", flush=True)
 
     consecutive_errors = 0
+    poll_count = 0
     while True:
         ensure_ssh_tunnel()
 
@@ -127,17 +156,20 @@ def main():
             task_id = task.get("id")
             author = task.get("author", "User")
             prompt = task.get("prompt", "")
-            print(f"\n[+] [{time.strftime('%H:%M:%S')}] New Task from Discord: #{task_id} by {author}")
-            print(f"    Prompt: {prompt}")
+            print(f"\n[+] [{time.strftime('%H:%M:%S')}] New Task from Discord: #{task_id} by {author}", flush=True)
+            print(f"    Prompt: {prompt}", flush=True)
 
             output = execute_antigravity_cli(prompt)
-            print(f"    Result generated ({len(output)} chars). Sending back to Discord...")
+            print(f"    Result generated ({len(output)} chars). Sending back to Discord...", flush=True)
 
             res = submit_task_result(task_id, output, success=True)
-            print(f"    Posted to Discord: {res}")
+            print(f"    Posted to Discord: {res}", flush=True)
             consecutive_errors = 0
         else:
             time.sleep(1.5)
+            poll_count += 1
+            if poll_count % 40 == 0: # Every 60s
+                print(f"[*] [{time.strftime('%H:%M:%S')}] Bridge alive and polling (task queue clear)...", flush=True)
 
 if __name__ == "__main__":
     main()

@@ -378,10 +378,56 @@ class DevChatService:
         bot: commands.Bot,
         message_id: int = 0
     ) -> discord.Embed | str:
-        text_lower = text.lower().strip()
+        text_clean = text.strip()
+        text_lower = text_clean.lower()
 
-        # 1. Status / Diagnostics
-        if any(w in text_lower for w in ["status", "ステータス", "vps", "k3s", "負荷", "負荷状況", "システム状態", "稼働状況"]):
+        # 1. Explicit List Requests
+        if text_lower in ["メモ一覧", "memos", "!memos", "/memos"]:
+            memos = self.list_memos()
+            if not memos:
+                return "ℹ️ 現在登録されている開発メモはありません。`📝・メモ` チャンネルにメッセージを送信すると自動記録されます。"
+            embed = discord.Embed(title="📝 開発メモ一覧", color=0x3B82F6)
+            for m in memos[-10:]:
+                embed.add_field(
+                    name=f"#{m['id']} {m['title']} ({m['created_at']})",
+                    value=m['content'][:200] + ("..." if len(m['content']) > 200 else ""),
+                    inline=False
+                )
+            return embed
+
+        if text_lower in ["メモリー一覧", "memory list", "!memory", "/memory"]:
+            mems = self.list_memories_dict()
+            if not mems:
+                return "ℹ️ 現在登録されているメモリー情報はありません。`🧠・メモリー` チャンネルにメッセージを送信すると自動記憶されます。"
+            embed = discord.Embed(title="🧠 システムメモリー一覧", color=0x8B5CF6)
+            for k, v in list(mems.items())[-10:]:
+                embed.add_field(
+                    name=f"🔑 {k} ({v.get('updated_at', '')})",
+                    value=v.get('content', '')[:200],
+                    inline=False
+                )
+            return embed
+
+        if text_lower in ["シークレット一覧", "secrets", "!secrets", "/secrets"]:
+            secs = self.list_secrets()
+            if not secs:
+                return "ℹ️ 現在登録されているシークレットはありません。`🔐・シークレット` チャンネルに送信すると安全に保管されます。"
+            embed = discord.Embed(title="🔐 シークレット一覧 (マスク表示)", color=0xF59E0B)
+            for s in secs:
+                embed.add_field(
+                    name=f"🔑 `{s['key']}`",
+                    value=f"値: `{s['masked_value']}`\n更新日時: {s['updated_at']}\n登録者: {s['author']}",
+                    inline=False
+                )
+            return embed
+
+        # 2. Explicit VPS command only when short/exact match
+        is_exact_vps_cmd = text_lower in [
+            "status", "ステータス", "vps", "k3s", "負荷", "負荷状況",
+            "システム状態", "稼働状況", "!status", "/status", "!vps", "/vps"
+        ] or text_lower.startswith(("!status", "/status", "!vps", "/vps"))
+
+        if is_exact_vps_cmd:
             diag = self.get_vps_diagnostics()
             embed = discord.Embed(
                 title="🖥️ VPS & クラスターリアルタイム稼働状況",
@@ -396,61 +442,7 @@ class DevChatService:
             embed.set_footer(text="OmusuBI Devops • Antigravity Remote Assistant")
             return embed
 
-        # 2. Argo CD / GitOps check
-        if any(w in text_lower for w in ["argocd", "argo", "gitops", "同期"]):
-            diag = self.get_vps_diagnostics()
-            embed = discord.Embed(
-                title="🐙 Argo CD GitOps 同期状態",
-                description="K3s クラスター上の Argo CD アプリケーションステータスです。",
-                color=0xEA580C
-            )
-            embed.add_field(name="同期中アプリケーション", value=f"```{diag.get('argocd_apps', 'N/A')}```", inline=False)
-            embed.set_footer(text="OmusuBI GitOps • clusters/vps")
-            return embed
-
-        # 3. List memos
-        if "メモ一覧" in text or "memos" in text_lower:
-            memos = self.list_memos()
-            if not memos:
-                return "ℹ️ 現在登録されている開発メモはありません。`📝・メモ` チャンネルにメッセージを送信すると自動記録されます。"
-            embed = discord.Embed(title="📝 開発メモ一覧", color=0x3B82F6)
-            for m in memos[-10:]:
-                embed.add_field(
-                    name=f"#{m['id']} {m['title']} ({m['created_at']})",
-                    value=m['content'][:200] + ("..." if len(m['content']) > 200 else ""),
-                    inline=False
-                )
-            return embed
-
-        # 4. List memory
-        if "メモリー一覧" in text or "memory list" in text_lower:
-            mems = self.list_memories_dict()
-            if not mems:
-                return "ℹ️ 現在登録されているメモリー情報はありません。`🧠・メモリー` チャンネルにメッセージを送信すると自動記憶されます。"
-            embed = discord.Embed(title="🧠 システムメモリー一覧", color=0x8B5CF6)
-            for k, v in list(mems.items())[-10:]:
-                embed.add_field(
-                    name=f"🔑 {k} ({v.get('updated_at', '')})",
-                    value=v.get('content', '')[:200],
-                    inline=False
-                )
-            return embed
-
-        # 5. List secrets
-        if "シークレット一覧" in text or "secrets" in text_lower:
-            secs = self.list_secrets()
-            if not secs:
-                return "ℹ️ 現在登録されているシークレットはありません。`🔐・シークレット` チャンネルに送信すると安全に保管されます。"
-            embed = discord.Embed(title="🔐 シークレット一覧 (マスク表示)", color=0xF59E0B)
-            for s in secs:
-                embed.add_field(
-                    name=f"🔑 `{s['key']}`",
-                    value=f"値: `{s['masked_value']}`\n更新日時: {s['updated_at']}\n登録者: {s['author']}",
-                    inline=False
-                )
-            return embed
-
-        # 6. Check if PC Bridge is online for direct execution!
+        # 3. Check if PC Bridge is online -> FORWARD PROMPT TO PC ANTIGRAVITY!
         if self.is_bridge_online():
             task_id = self.add_bridge_task(
                 prompt=text,
@@ -465,18 +457,31 @@ class DevChatService:
             )
             embed.set_footer(text=f"Task: {task_id} • Status: Running on PC Antigravity")
             return embed
-        else:
+
+        # 4. If PC Bridge is Offline:
+        # Check ArgoCD keyword fallback or show offline notice
+        if any(w in text_lower for w in ["argocd", "argo", "gitops"]):
+            diag = self.get_vps_diagnostics()
             embed = discord.Embed(
-                title="🏠 HOME-DESKTOP (PC Bridge) オフライン",
-                description=(
-                    f"**受信プロンプト:**\n> {text}\n\n"
-                    "自宅PC（HOME-DESKTOP）の Antigravity Bridge が現在オフラインです。\n"
-                    "PCを起動し `start_bridge.bat` が実行されると、Discordから自宅PCのAntigravityを直接遠隔操作できます。\n\n"
-                    "※VPS単体のステータス確認（`ステータス` / `argocd`）や、`📝・メモ`、`🧠・メモリー`、`🔐・シークレット` の保存はそのままご利用いただけます。"
-                ),
-                color=0xF59E0B
+                title="🐙 Argo CD GitOps 同期状態",
+                description="K3s クラスター上の Argo CD アプリケーションステータスです。",
+                color=0xEA580C
             )
-            embed.set_footer(text="OmusuBI Devops • Antigravity Remote Assistant")
+            embed.add_field(name="同期中アプリケーション", value=f"```{diag.get('argocd_apps', 'N/A')}```", inline=False)
+            embed.set_footer(text="OmusuBI GitOps • clusters/vps")
             return embed
+
+        embed = discord.Embed(
+            title="🏠 HOME-DESKTOP (PC Bridge) オフライン",
+            description=(
+                f"**受信プロンプト:**\n> {text}\n\n"
+                "自宅PC（HOME-DESKTOP）の Antigravity Bridge が現在オフラインです。\n"
+                "PCを起動し `start_bridge.bat` が実行されると、Discordから自宅PCのAntigravityを直接遠隔操作できます。\n\n"
+                "※VPS単体のステータス確認（`ステータス` / `argocd`）や、`📝・メモ`、`🧠・メモリー`、`🔐・シークレット` の保存はそのままご利用いただけます。"
+            ),
+            color=0xF59E0B
+        )
+        embed.set_footer(text="OmusuBI Devops • Antigravity Remote Assistant")
+        return embed
 
 dev_chat_service = DevChatService()
