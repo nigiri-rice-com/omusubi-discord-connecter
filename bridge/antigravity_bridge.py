@@ -7,6 +7,15 @@ import urllib.error
 import subprocess
 from pathlib import Path
 
+# Safe encoding for Windows console
+try:
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 # Paths & Configuration
 DEVOP_DIR = Path(__file__).resolve().parent
 AGY_EXE = Path(os.environ.get("LOCALAPPDATA", "C:\\Users\\simas\\AppData\\Local")) / "agy" / "bin" / "agy.exe"
@@ -120,22 +129,18 @@ def execute_antigravity_cli(prompt: str) -> str:
         out = res.stdout.strip()
         err = res.stderr.strip()
         if res.returncode != 0 and not out:
-            return f"⚠️ エラー (Exit code {res.returncode}):\n{err}"
+            return f"エラー (Exit code {res.returncode}):\n{err}"
         return out if out else (err if err else "（完了しました）")
     except subprocess.TimeoutExpired:
-        return "⚠️ エラー: 処理がタイムアウトしました（3分超過）"
+        return "エラー: 処理がタイムアウトしました（3分超過）"
     except Exception as e:
-        return f"⚠️ 実行時例外エラー: {e}"
+        return f"実行時例外エラー: {e}"
 
 def main():
     disable_quickedit()
-    try:
-        sys.stdout.reconfigure(line_buffering=True)
-    except Exception:
-        pass
 
     print("=" * 64, flush=True)
-    print("  🍙 Antigravity ⇔ Discord PC Remote Bridge (HOME-DESKTOP)", flush=True)
+    print("  Antigravity <-> Discord PC Remote Bridge (HOME-DESKTOP)", flush=True)
     print(f"  Working Dir: {DEVOP_DIR}", flush=True)
     print(f"  Target CLI:  {AGY_EXE}", flush=True)
     print("=" * 64, flush=True)
@@ -146,7 +151,6 @@ def main():
     print("[+] Bridge Status: ONLINE", flush=True)
     print("[*] Ready and listening for Discord prompts... (Press Ctrl+C to stop)", flush=True)
 
-    consecutive_errors = 0
     poll_count = 0
     while True:
         ensure_ssh_tunnel()
@@ -164,7 +168,6 @@ def main():
 
             res = submit_task_result(task_id, output, success=True)
             print(f"    Posted to Discord: {res}", flush=True)
-            consecutive_errors = 0
         else:
             time.sleep(1.5)
             poll_count += 1
